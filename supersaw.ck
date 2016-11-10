@@ -4,10 +4,10 @@
 
 // TODO:
 //  handle midi messages
-
-
-// computer key input, with sound
-KBHit kb;
+//  
+// CONTROLS:
+//  [left - right] => detune amount
+//  [ up  - down ] => oscs mix
 
 class supersaw {
    static Gain   @c[6];  // six channel mixer [todo, curves]
@@ -18,12 +18,12 @@ class supersaw {
    new SawOsc[6] @=> o;
    Detune xd;
    ADSR env;
-   float mixcontrol;
-
-   0.9 => xd.amount;		// initial amount of detuning
-   1 => mixcontrol;		// initial oscillator mixing
+   float mixcontrol, detunecontrol, mfreq;
+ 
+   0.5 => detunecontrol => xd.amount;		// initial amount of detuning
+   0.5 => mixcontrol;		// initial oscillator mixing
    for(0 =>int i; i < 6; ++i) {
-     o[i] => f[i] => c[i] => env => dac;
+     o[i] => f[i] => c[i] => dac;//env => dac;
      setMixLevel(i);
    }
 
@@ -46,10 +46,19 @@ class supersaw {
      else -0.73764*mixcontrol*mixcontrol + 1.2841*mixcontrol + 0.044372 => c[i].gain;
    }
 
+   fun void onDetune() {
+     for(0 =>int i; i < 6; ++i) {
+       dodetune(mfreq,i) => o[i].freq;
+       o[i].freq() => float tmp;
+       tmp * 2 => f[i].freq;               // adjust HPF
+     }
+
+   }
+
    fun void trigger(float freq) {
      1 => env.keyOn;
      env.set(.1::second,1::second,0.0,.1::second);
-
+     freq => mfreq;
      for(0 =>int i; i < 6; ++i) {
        randphase()   => o[i].phase;
        dodetune(freq,i) => o[i].freq;
@@ -81,18 +90,66 @@ public class supersaws {
 
 
 // ------------------- RUN LOOP -------------------
-
-supersaws s;
-// TODO: use midi for keys, ud/lr for detune/mix
+// TODO: use midi for keys
 //  see examples/midi/polyfony.ck
-//  on blahevent -> setMixLevels
+
+supersaw s;
+KBHit kb;
+
+fun void doCmdKey(int o) {
+  kb.getchar();                 // we eat up the 91
+  kb.getchar() => int c;
+
+  if (o == 59) { // shift + arrow
+    if (c == 65) {       // up arrow
+      for(0 =>int i; i < 6; ++i) {
+       s.o[i] => s.f[i] => s.c[i] => dac;//env => dac;
+       s.setMixLevel(i);
+      }
+    } else if (c == 66) {       // down arrow
+      for(0 =>int i; i < 6; ++i) {
+       s.o[i] =< s.f[i] =< s.c[i] =< dac;//env => dac;
+       s.setMixLevel(i);
+      }
+    }
+
+  }
+   <<< "[mix]", s.mixcontrol, "[det]", s.detunecontrol >>>;
+  if (c == 65 || c == 66) {
+    if (c == 66) {		// up arrow
+      .025 +=> s.mixcontrol;
+      if (s.mixcontrol > 1) 1 => s.mixcontrol;
+      s.setMixLevels();
+    } else if (c == 65) {	// down arrow
+      -.025 +=> s.mixcontrol;
+      if (s.mixcontrol < 0) 0 => s.mixcontrol;
+      s.setMixLevels();
+    }
+  } else if (c == 67 || c == 68) {
+    if (c == 68) {	// left arrow
+      -.025 +=> s.detunecontrol;
+    } else if (c == 67) {	// right arrow
+      .025 +=> s.detunecontrol;
+    }
+    if (s.detunecontrol < 0) 0 => s.detunecontrol;
+    if (s.detunecontrol >1) 1 => s.detunecontrol;
+    s.detunecontrol => s.xd.amount;
+    s.onDetune();
+  }
+}
 
 while( true ) {
-    // wait on event
-    kb => now;
+    kb => now;		// wait on kbd event
 
     while( kb.more() ) {
-        kb.getchar() => int c => Std.mtof => float f;
-        s.trigger(f);
+        kb.getchar() => int c;
+ <<< c >>>;
+        if (c == 27 || c == 59) {	// '^'
+          doCmdKey(c);
+        } else {
+          c => Std.mtof => float f;
+          s.trigger(f);
+        }
     }
+//    24::ms => now;
 }

@@ -1,7 +1,0 @@
-Supersaw-like synthesis for ChucK.
-
-Based on thesis paper by Adam Szabo
--> https://www.nada.kth.se/utbildning/grukth/exjobb/rapportlistor/2010/rapporter10/szabo_adam_10131.pdf
-
-
-apply chuck.patch over chuck-1.3.5.2.tgz
