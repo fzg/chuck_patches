@@ -1,0 +1,36 @@
+(this is a wip, not uptodate, but partially implemented)
+
+So 2 native ugens:
+one that ticks the detune,
+one that ticks the mixing
+
+refactor the ugen so that we have one 
+SuperSawDetunerParameterMaker
+
+that we connect to 6 SuperSawDetuner that we connect to 6 SawOscs
+
+the master osc we don't hook to that.
+
+then we got a SuperSawMixParameterMaker that we connect to 2 gain nodes
+
+We connect the 6 corner oscs to one of them, the master to the other
+
+
+on detuneEvent: Recompute the parameter, and recompute the frequencies given the master osc is on tune.
+on mixevent: update gain node levels
+
+on frequency change: change hpf value
+
+
+noteOn:
+  
+
+det => SSD.det
+mix => SSD.mix
+
+SSD => o0
+ ...
+SSD => o7
+
+
+o0 => hpf0

@@ -8,31 +8,60 @@
 // CONTROLS:
 //  [left - right] => detune amount
 //  [ up  - down ] => oscs mix
+int device;
+2 => device;
+
+class NoteEvent extends Event
+{
+    int note;
+    int velocity;
+    float mix;
+    float det;
+}
+
+NoteEvent on;
+
+// array of ugen's handling each note
+Event @ us[128];
+
+
 
 class supersaw {
-   static Gain   @c[6];  // six channel mixer [todo, curves]
-   static SawOsc @o[6];  // six sawtooth oscs
-   static HPF    @f[6];  // six hpfs
-   new Gain[6]   @=> c;
-   new HPF[6]    @=> f;
-   new SawOsc[6] @=> o;
+   static Gain   @c[7];  // six channel mixer [todo, curves]
+   static SawOsc @o[7];  // six sawtooth oscs
+   static HPF    @f;  // six hpfs
+   new Gain[7]   @=> c;
+   new HPF    @=> f;
+   new SawOsc[7] @=> o;
    Detune xd;
    ADSR env;
    float mixcontrol, detunecontrol, mfreq;
- 
-   0.5 => detunecontrol => xd.amount;		// initial amount of detuning
-   0.5 => mixcontrol;		// initial oscillator mixing
-   for(0 =>int i; i < 6; ++i) {
-     o[i] => f[i] => c[i] => dac;//env => dac;
-     setMixLevel(i);
+
+   connect();
+   fun void connect() {
+     <<< "con" >>>;
+     0.5 => detunecontrol => xd.det;		// initial amount of detuning
+     0.5 => mixcontrol;		// initial oscillator mixing
+     for(0 =>int i; i < 7; ++i) {
+       o[i] => c[i] => f => dac;//env => dac;
+       setMixLevel(i);
+     }
+   }
+
+   fun void disconnect() {
+     <<< "discon" >>>;
+     for(0 =>int i; i < 7; ++i) {
+       o[i] =< c[i] =< f =< dac;//env => dac;
+     }
    }
 
    // computes the detuned frequency for each osc
    [ - 0.11002313,  - 0.06288439,- 0.01952356, 0.01991221,0.06216538,0.10745242] @=> float osc_offsets[];
+
    fun float dodetune(float x, int n) {
      if (n == 0)return x;
      //<<<  xd.output() >>>;
-     return x+(osc_offsets[n-1] * 1 + xd.output());
+     return x+(osc_offsets[n-1] * 1 + xd.det());
    }
 
    // returns a random phase
@@ -47,122 +76,162 @@ class supersaw {
    }
 
    fun void onDetune() {
-     for(0 =>int i; i < 6; ++i) {
+     for(0 =>int i; i < 7; ++i) {
        dodetune(mfreq,i) => o[i].freq;
        o[i].freq() => float tmp;
-       tmp * 2 => f[i].freq;               // adjust HPF
+       tmp => f.freq;               // adjust HPF
      }
 
    }
 
+   fun void noteOff() {
+     for(0 =>int i; i < 7; ++i) {
+       0 => o[i].freq;
+     }
+   }
+
    fun void trigger(float freq) {
+     <<< "triggering" >>>;
      1 => env.keyOn;
      env.set(.1::second,1::second,0.0,.1::second);
      freq => mfreq;
-     for(0 =>int i; i < 6; ++i) {
+     for(0 =>int i; i < 7; ++i) {
        randphase()   => o[i].phase;
        dodetune(freq,i) => o[i].freq;
-       freq  => f[i].freq;               // adjust HPF
+       freq  => f.freq;               // adjust HPF
      }
    }
 
    fun void setMixLevels() {
-     for(0 =>int i; i < 6; ++i) {
+     for(0 =>int i; i < 7; ++i) {
        setMixLevel(i);
      }
    }
+} // - end of supersaw class
+
+.5 =>  float mixcontrol;
+.5 =>  float detunecontrol;
+
 
  fun void doCmdKey(int oo, int cc) {
-
-  if (oo == 59) { // shift + arrow
-    if (cc == 65) {       // up arrow
-      for(0 =>int i; i < 6; ++i) {
-       o[i] => f[i] => c[i] => dac;//env => dac;
-       setMixLevel(i);
-      }
-    } else if (cc == 66) {       // down arrow
-      for(0 =>int i; i < 6; ++i) {
-       o[i] =< f[i] =< c[i] =< dac;//env => dac;
-       setMixLevel(i);
-      }
-    }
-  }
-   <<< "[mix]", mixcontrol, "[det]", detunecontrol >>>;
   if (cc == 65 || cc == 66) {
     if (cc == 66) {              // up arrow
       .025 +=> mixcontrol;
       if (mixcontrol > 1) 1 => mixcontrol;
-      setMixLevels();
+      mixcontrol => on.mix;
+      <<< "mix!" >>>;
+      on.broadcast();
+      me.yield();
+
     } else if (cc == 65) {       // down arrow
       -.025 +=> mixcontrol;
       if (mixcontrol < 0) 0 => mixcontrol;
-      setMixLevels();
+      mixcontrol => on.mix;
+      on.broadcast();
+      me.yield();
+
     }
   } else if (cc == 67 || cc == 68) {
     if (cc == 68)     -.025 +=> detunecontrol;
     else if (cc == 67) .025 +=> detunecontrol;
     if (detunecontrol < 0) 0 => detunecontrol;
     if (detunecontrol >1) 1 => detunecontrol;
-    detunecontrol => xd.amount;
-    onDetune();
+    detunecontrol => on.det;
+    on.broadcast();
+    me.yield();
+
   }
  }
 
 
+
+fun void handler() // voice handler
+{
+  supersaw s;
+  Event off;
+  int note;
+
+  while( true ) {
+    on => now;
+    on.note => note;
+    on.det =>  s.xd.det;
+    s.onDetune();
+    on.mix => s.mixcontrol;
+    s.setMixLevels();
+
+    <<< "note" ,note >>>;
+    s.connect();
+    s.trigger(Std.mtof( note ));
+    // on.velocity / 128.0 => something;
+    off @=> us[note];
+    off => now;
+    null @=> us[note];
+    //s.noteOff();
+    s.disconnect();
+  }
 }
 
-// ------------------- Polypoly -------------------
+for( 0 => int i; i < 20; i++ ) spork ~ handler();
 
-
-public class supersaws {
-   2 => int nosc;
-   supersaw @s[nosc];
-   new supersaw[nosc]    @=> s;
-
-   fun void doCmdKey(int o, int c) {
-     for(0=>int i; i<nosc;++i) {
-     s[i].doCmdKey(o, c);
-    }
-   }
-
-   fun void triggerNote(int c) {
-     for(0=>int i; i<nosc;++i) {
-      i +1 *=> c => Std.mtof => float fl;
-      s[i].trigger(fl);
-     }
-   }
-
-   fun void trigger(float f) {
-     for(0=>int i; i<nosc;++i) {
-      s[i].trigger(f);
-     }
-   }
-}
 
 
 // ------------------- RUN LOOP -------------------
 // TODO: use midi for keys
 //  see examples/midi/polyfony.ck
 
-supersaw s;
+//supersaw s;
 KBHit kb;
+MidiIn min;
+MidiMsg msg;
 
 
-while( true ) {
-    kb => now;		// wait on kbd event
+if( !min.open( device ) ) me.exit();
+
+// print out device that was opened
+<<< "MIDI device:", min.num(), " -> ", min.name() >>>;
+
+
+fun void kbHandler ( ) { while (true) {
+    kb => now;          // wait on kbd event
 
     while( kb.more() ) {
         kb.getchar() => int chr;
- <<< chr >>>;
-        if (chr == 27 || chr == 59) {	// '^'
+        if (chr == 27 || chr == 59) {   // '^'
           kb.getchar();                 // we eat up the 91
           kb.getchar() => int d;
-          s.doCmdKey(chr, d);
+          doCmdKey(chr, d);
         } else {
-          chr => Std.mtof => float f;
-          s.trigger(f);
-//            s.triggerNote(chr);
+          chr => on.note;
+          on.signal();
+          me.yield();
         }
     }
-//    24::ms => now;
+}}
+
+fun void midiHandler() { while (true) {
+        min => now;
+        while (min.recv(msg)) {
+          //<<< msg.data1, msg.data2, msg.data3 >>>;
+          if((msg.data1 & 0xF0) == 0x90 && msg.data2 > 0) {
+            if ( msg.data3 > 0 ) {
+              <<< msg.data1, msg.data2, msg.data3 >>>;
+              msg.data2 => on.note;
+	      msg.data3 => on.velocity;
+              on.signal();
+              me.yield();
+            } else {
+              if( us[msg.data2] != null ) us[msg.data2].signal();
+            }
+
+          } else {if ((msg.data1 & 0xF1) == 0x90) {
+	     us[msg.data2].signal();
+          }}
+        }
+}}
+
+//spork ~ midiHandler();
+spork ~ kbHandler();
+
+while( true ) {
+	1::second => now;
 }

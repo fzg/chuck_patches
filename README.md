@@ -10,6 +10,11 @@ _copyleft fz[g|n]_
 ---
 
 
+this doc is for the (deprecated?) supersaw.ck.
+
+the patch is to use supersaw_newimpl.ck.
+
+
 ###CONTROLS
 
 -- Toggle output using `shift-↑` and `shift-↓`
@@ -26,7 +31,7 @@ _copyleft fz[g|n]_
 
 -- tar xf
 
--- apply chuck.patch
+-- apply chuck.patch (for deprecated impl. for current apply the other patch file)
 
 -- make linux-[alsa|oss|pulse]
 
